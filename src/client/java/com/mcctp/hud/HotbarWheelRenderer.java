@@ -8,7 +8,9 @@ import net.minecraft.item.ItemStack;
 public class HotbarWheelRenderer {
     private static final int RADIUS = 60;
     private static final int SLOT_SIZE = 20;
-    private static final float ANGLE_STEP = 40f;
+    private static final float START_ANGLE = 180f;   // π radians (left side)
+    private static final float TOTAL_ARC = 270f;     // 3/4 circle (π to -π/2)
+    private static final float ANGLE_STEP = TOTAL_ARC / 8f; // 33.75° for 9 slots
     private static final int SELECTED_COLOR = 0xFFFFD700;
     private static final int NORMAL_COLOR = 0xAA333333;
     private static final int BORDER_COLOR = 0xAA888888;
@@ -25,7 +27,7 @@ public class HotbarWheelRenderer {
         int selected = HotbarWheelState.getSelectedSlot();
 
         for (int i = 0; i < 9; i++) {
-            double angle = Math.toRadians(-90 + i * ANGLE_STEP);
+            double angle = Math.toRadians(START_ANGLE + i * ANGLE_STEP);
             int slotX = centerX + (int) (RADIUS * Math.cos(angle)) - SLOT_SIZE / 2;
             int slotY = centerY + (int) (RADIUS * Math.sin(angle)) - SLOT_SIZE / 2;
 

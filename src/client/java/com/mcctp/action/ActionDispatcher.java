@@ -27,6 +27,11 @@ public class ActionDispatcher {
         handlers.put("swap_hands", new SwapHandsHandler());
         handlers.put("open_inventory", new OpenInventoryHandler());
         handlers.put("toggle_wheel", new ToggleWheelHandler());
+        handlers.put("hover_slot", new HoverSlotHandler());
+    }
+
+    public void registerHandler(String action, ActionHandler handler) {
+        handlers.put(action, handler);
     }
 
     public String dispatch(String json) {

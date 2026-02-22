@@ -5,7 +5,6 @@ import threading
 from typing import Callable, Optional
 
 from mcctp.client import MCCTPClient
-from mcctp.state import GameState
 
 
 class SyncMCCTPClient:
@@ -17,11 +16,18 @@ class SyncMCCTPClient:
         self._thread: Optional[threading.Thread] = None
 
     @property
-    def state(self) -> Optional[GameState]:
+    def state(self) -> Optional[dict]:
         return self._async_client.state
 
-    def on_state(self, callback: Callable[[GameState], None]):
+    @property
+    def modules(self) -> list[str]:
+        return self._async_client.modules
+
+    def on_state(self, callback: Callable[[dict], None]):
         self._async_client.on_state(callback)
+
+    def on_handshake(self, callback: Callable[[list[str]], None]):
+        self._async_client.on_handshake(callback)
 
     def connect(self):
         self._loop = asyncio.new_event_loop()

@@ -8,7 +8,6 @@ import websockets
 from websockets.asyncio.client import ClientConnection
 
 from mcctp.exceptions import ConnectionError, ActionError
-from mcctp.state import GameState
 
 
 class MCCTPClient:
@@ -17,16 +16,25 @@ class MCCTPClient:
     def __init__(self, host: str = "localhost", port: int = 8765):
         self.uri = f"ws://{host}:{port}/mcctp"
         self._ws: Optional[ClientConnection] = None
-        self._state: Optional[GameState] = None
-        self._state_callback: Optional[Callable[[GameState], None]] = None
+        self._state: Optional[dict] = None
+        self._state_callback: Optional[Callable[[dict], None]] = None
+        self._modules: list[str] = []
+        self._handshake_callback: Optional[Callable[[list[str]], None]] = None
         self._running = False
 
     @property
-    def state(self) -> Optional[GameState]:
+    def state(self) -> Optional[dict]:
         return self._state
 
-    def on_state(self, callback: Callable[[GameState], None]):
+    @property
+    def modules(self) -> list[str]:
+        return self._modules
+
+    def on_state(self, callback: Callable[[dict], None]):
         self._state_callback = callback
+
+    def on_handshake(self, callback: Callable[[list[str]], None]):
+        self._handshake_callback = callback
 
     async def connect(self):
         try:
@@ -53,18 +61,23 @@ class MCCTPClient:
         return json.loads(data)
 
     async def listen(self):
-        """Listen for game state updates. Blocks until disconnected."""
+        """Listen for messages. Blocks until disconnected."""
         if not self._ws:
             raise ConnectionError("Not connected")
 
         try:
             async for message in self._ws:
                 data = json.loads(message)
-                if data.get("type") == "game_state":
-                    self._state = GameState.from_dict(data)
+                msg_type = data.get("type")
+                if msg_type == "handshake":
+                    self._modules = data.get("modules", [])
+                    if self._handshake_callback:
+                        self._handshake_callback(self._modules)
+                elif msg_type == "game_state":
+                    self._state = data
                     if self._state_callback:
                         self._state_callback(self._state)
-                elif data.get("type") == "error":
+                elif msg_type == "error":
                     raise ActionError(data.get("message", "Unknown error"))
         except websockets.ConnectionClosed:
             pass
