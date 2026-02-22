@@ -17,11 +17,23 @@ public class CombatContextInfo {
     public final String crosshairTarget;
     public final String crosshairEntityType;
     public final int[] crosshairBlockPos;
+    public final float attackCooldown;
+    public final float itemUseProgress;
 
     public CombatContextInfo(ClientPlayerEntity player) {
         this.isUsingItem = player.isUsingItem();
         this.isBlocking = player.isBlocking();
         this.activeHand = player.getActiveHand() == Hand.MAIN_HAND ? "MAIN_HAND" : "OFF_HAND";
+        this.attackCooldown = player.getAttackCooldownProgress(0.0f);
+
+        if (player.isUsingItem()) {
+            int maxUse = player.getActiveItem().getMaxUseTime(player);
+            this.itemUseProgress = maxUse > 0
+                ? Math.min(1.0f, (float) player.getItemUseTime() / (float) maxUse)
+                : 0.0f;
+        } else {
+            this.itemUseProgress = 0.0f;
+        }
 
         MinecraftClient client = MinecraftClient.getInstance();
         HitResult hitResult = client.crosshairTarget;

@@ -19,6 +19,12 @@ public class PlayerStateInfo {
     public final boolean flying;
     public final boolean inWater;
     public final boolean onFire;
+    public final float fallDistance;
+    public final float velocityY;
+    public final int armor;
+    public final boolean isClimbing;
+    public final boolean recentlyHurt;
+    public final boolean horizontalCollision;
 
     public PlayerStateInfo(ClientPlayerEntity player) {
         this.health = player.getHealth();
@@ -37,5 +43,11 @@ public class PlayerStateInfo {
         this.flying = player.getAbilities().flying;
         this.inWater = player.isTouchingWater();
         this.onFire = player.isOnFire();
+        this.fallDistance = (float) player.fallDistance;
+        this.velocityY = (float) player.getVelocity().y;
+        this.armor = player.getArmor();
+        this.isClimbing = player.isClimbing();
+        this.recentlyHurt = player.hurtTime > 0;
+        this.horizontalCollision = player.horizontalCollision;
     }
 }

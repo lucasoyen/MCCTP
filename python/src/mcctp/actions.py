@@ -11,6 +11,8 @@ SELECT_SLOT = "select_slot"
 SWAP_HANDS = "swap_hands"
 OPEN_INVENTORY = "open_inventory"
 TOGGLE_WHEEL = "toggle_wheel"
+CURSOR = "cursor"
+CLICK = "click"
 
 
 class Actions:
@@ -67,3 +69,13 @@ class Actions:
     @staticmethod
     def toggle_wheel() -> dict:
         return {"action": TOGGLE_WHEEL, "params": {}}
+
+    @staticmethod
+    def cursor(x: float, y: float) -> dict:
+        """Set cursor position on open screen (x, y normalized 0-1)."""
+        return {"action": CURSOR, "params": {"x": x, "y": y}}
+
+    @staticmethod
+    def click(button: str = "left") -> dict:
+        """Click on open screen. button: 'left' or 'right'."""
+        return {"action": CLICK, "params": {"button": button}}
