@@ -26,6 +26,7 @@ public class ActionDispatcher {
         handlers.put("select_slot", new SelectSlotHandler());
         handlers.put("swap_hands", new SwapHandsHandler());
         handlers.put("open_inventory", new OpenInventoryHandler());
+        handlers.put("close_screen", new CloseScreenHandler());
         handlers.put("toggle_wheel", new ToggleWheelHandler());
         handlers.put("hover_slot", new HoverSlotHandler());
     }

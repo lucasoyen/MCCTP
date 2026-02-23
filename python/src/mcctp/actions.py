@@ -10,6 +10,7 @@ DROP_ITEM = "drop_item"
 SELECT_SLOT = "select_slot"
 SWAP_HANDS = "swap_hands"
 OPEN_INVENTORY = "open_inventory"
+CLOSE_SCREEN = "close_screen"
 TOGGLE_WHEEL = "toggle_wheel"
 
 
@@ -63,6 +64,11 @@ class Actions:
     @staticmethod
     def open_inventory() -> dict:
         return {"action": OPEN_INVENTORY, "params": {}}
+
+    @staticmethod
+    def close_screen() -> dict:
+        """Close the currently open screen (equivalent to pressing Escape)."""
+        return {"action": CLOSE_SCREEN, "params": {}}
 
     @staticmethod
     def toggle_wheel() -> dict:
