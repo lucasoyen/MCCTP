@@ -29,6 +29,8 @@ public class ActionDispatcher {
         handlers.put("close_screen", new CloseScreenHandler());
         handlers.put("toggle_wheel", new ToggleWheelHandler());
         handlers.put("hover_slot", new HoverSlotHandler());
+        handlers.put("inventory_click", new InventoryClickHandler());
+        handlers.put("send_chat", new SendChatHandler());
     }
 
     public void registerHandler(String action, ActionHandler handler) {

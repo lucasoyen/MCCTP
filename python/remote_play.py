@@ -1,199 +1,269 @@
-"""Remote play - control Minecraft from another computer using keyboard and mouse."""
+"""Remote play - control Minecraft from another computer using pygame."""
 
+import argparse
 import sys
 import threading
-import time
-from pynput import keyboard, mouse
+
+import pygame
+
 from mcctp import SyncMCCTPClient, Actions
 
-HOST = "129.21.148.235"
-PORT = 8765
+DEFAULT_PORT = 8765
 MOUSE_SENSITIVITY = 0.15
-
-# Track key states to avoid spamming start/stop
-held_keys = set()
-running = True
-locked = False  # mouse look enabled
+FPS = 30
+WIN_W, WIN_H = 640, 360
 
 
-def on_state(state):
-    line = (f"[State] HP: {state.player_state.health} | "
-            f"Pos: ({state.player_state.x}, {state.player_state.y}, {state.player_state.z}) | "
-            f"Held: {state.held_item.name} ({state.held_item.category})")
-    sys.stdout.write(f"\r\033[K{line}")
-    sys.stdout.flush()
+def ask_host_dialog() -> str | None:
+    """Show a tkinter dialog to ask for the host IP. Returns the IP or None if cancelled."""
+    import tkinter as tk
 
+    result: list[str | None] = [None]
 
-def log(msg):
-    sys.stdout.write(f"\r\033[K{msg}\n")
-    sys.stdout.flush()
+    root = tk.Tk()
+    root.title("MCCTP Remote Play")
+    root.resizable(False, False)
+
+    tk.Label(root, text="Host IP:", font=("Arial", 12)).pack(padx=10, pady=(10, 0))
+    entry = tk.Entry(root, font=("Arial", 12), width=25)
+    entry.insert(0, "localhost")
+    entry.pack(padx=10, pady=5)
+    entry.select_range(0, tk.END)
+    entry.focus_set()
+
+    def on_connect():
+        result[0] = entry.get().strip() or "localhost"
+        root.destroy()
+
+    def on_enter(event):
+        on_connect()
+
+    entry.bind("<Return>", on_enter)
+    tk.Button(root, text="Connect", font=("Arial", 11), command=on_connect).pack(pady=(0, 10))
+
+    root.protocol("WM_DELETE_WINDOW", root.destroy)
+    root.mainloop()
+    return result[0]
 
 
 def main():
-    global running, locked
+    parser = argparse.ArgumentParser(description="Remote play - control Minecraft via MCCTP")
+    parser.add_argument("--host", default=None, help="Target IP address")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Target port (default: {DEFAULT_PORT})")
+    args = parser.parse_args()
 
-    client = SyncMCCTPClient(HOST, PORT)
+    host = args.host
+    if host is None:
+        host = ask_host_dialog()
+        if host is None:
+            print("No host specified, exiting.")
+            sys.exit(0)
+
+    # -- Connect MCCTP --
+    state_data: dict = {}
+    state_lock = threading.Lock()
+    connected = True
+
+    def on_state(state):
+        with state_lock:
+            state_data.update(state)
+
+    client = SyncMCCTPClient(host, args.port)
     client.on_state(on_state)
-    client.connect()
-    log(f"Connected to MCCTP at {HOST}:{PORT}")
-    log("Controls:")
-    log("  WASD = Move | Space = Jump | Shift = Sneak | Ctrl = Sprint")
-    log("  Mouse Move = Look (click window first) | Left Click = Attack | Right Click = Use")
-    log("  1-9 = Select slot | Q = Drop | E = Inventory | F = Swap hands")
-    log("  V = Toggle hotbar wheel")
-    log("  ESC = Quit")
-    log("")
-    log("Press F1 to toggle mouse look on/off")
-    log("")
+    try:
+        client.connect()
+    except Exception as e:
+        print(f"Failed to connect to {host}:{args.port} - {e}")
+        sys.exit(1)
 
-    # --- Keyboard ---
+    # -- Pygame init --
+    pygame.init()
+    screen = pygame.display.set_mode((WIN_W, WIN_H))
+    pygame.display.set_caption(f"MCCTP Remote Play - {host}")
+    clock = pygame.time.Clock()
+    font = pygame.font.SysFont("consolas", 16)
+
+    held_keys: set[str] = set()
+    mouse_grabbed = False
+    running = True
+
     key_map = {
-        'w': ("move", "forward"),
-        's': ("move", "backward"),
-        'a': ("move", "left"),
-        'd': ("move", "right"),
+        pygame.K_w: ("move", "forward"),
+        pygame.K_s: ("move", "backward"),
+        pygame.K_a: ("move", "left"),
+        pygame.K_d: ("move", "right"),
     }
 
-    def on_key_press(key):
-        global running, locked
+    def send(action):
+        nonlocal connected
         try:
-            if key == keyboard.Key.esc:
+            client.send(action)
+        except Exception:
+            connected = False
+
+    def set_grab(grab: bool):
+        nonlocal mouse_grabbed
+        mouse_grabbed = grab
+        pygame.event.set_grab(grab)
+        pygame.mouse.set_visible(not grab)
+        if grab:
+            pygame.mouse.get_rel()  # flush accumulated delta
+
+    def release_all():
+        for k in list(held_keys):
+            if k in ("forward", "backward", "left", "right"):
+                send(Actions.move(k, "stop"))
+            elif k == "sneak":
+                send(Actions.sneak("stop"))
+            elif k == "sprint":
+                send(Actions.sprint("stop"))
+            elif k == "use_item":
+                send(Actions.use_item("stop"))
+        held_keys.clear()
+
+    # -- Main loop --
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
                 running = False
-                return False
+                break
 
-            if key == keyboard.Key.f1:
-                locked = not locked
-                log(f"Mouse look: {'ON' if locked else 'OFF'}")
-                return
+            elif event.type == pygame.KEYDOWN:
+                key = event.key
 
-            if key == keyboard.Key.space:
-                client.send(Actions.jump())
-                return
+                if key == pygame.K_ESCAPE:
+                    if mouse_grabbed:
+                        set_grab(False)
+                    else:
+                        running = False
+                    continue
 
-            if key == keyboard.Key.shift_l or key == keyboard.Key.shift_r:
-                if 'sneak' not in held_keys:
-                    held_keys.add('sneak')
-                    client.send(Actions.sneak("start"))
-                return
+                if key == pygame.K_F1:
+                    set_grab(not mouse_grabbed)
+                    continue
 
-            if key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
-                if 'sprint' not in held_keys:
-                    held_keys.add('sprint')
-                    client.send(Actions.sprint("start"))
-                return
+                if key == pygame.K_SPACE:
+                    send(Actions.jump())
+                    continue
 
-            c = key.char if hasattr(key, 'char') and key.char else None
-            if c is None:
-                return
+                if key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+                    if "sneak" not in held_keys:
+                        held_keys.add("sneak")
+                        send(Actions.sneak("start"))
+                    continue
 
-            # Movement keys
-            if c in key_map:
-                action_type, direction = key_map[c]
-                if c not in held_keys:
-                    held_keys.add(c)
-                    client.send(Actions.move(direction, "start"))
-                return
+                if key in (pygame.K_LCTRL, pygame.K_RCTRL):
+                    if "sprint" not in held_keys:
+                        held_keys.add("sprint")
+                        send(Actions.sprint("start"))
+                    continue
 
-            # Hotbar slots 1-9
-            if c in '123456789':
-                client.send(Actions.select_slot(int(c) - 1))
-                return
+                if key in key_map:
+                    _, direction = key_map[key]
+                    if direction not in held_keys:
+                        held_keys.add(direction)
+                        send(Actions.move(direction, "start"))
+                    continue
 
-            if c == 'q':
-                client.send(Actions.drop_item(full_stack=False))
-            elif c == 'e':
-                client.send(Actions.open_inventory())
-            elif c == 'f':
-                client.send(Actions.swap_hands())
-            elif c == 'v':
-                client.send(Actions.toggle_wheel())
+                if pygame.K_1 <= key <= pygame.K_9:
+                    send(Actions.select_slot(key - pygame.K_1))
+                    continue
 
-        except Exception as e:
-            log(f"Error: {e}")
+                if key == pygame.K_q:
+                    send(Actions.drop_item(full_stack=False))
+                elif key == pygame.K_e:
+                    send(Actions.open_inventory())
+                elif key == pygame.K_f:
+                    send(Actions.swap_hands())
+                elif key == pygame.K_v:
+                    send(Actions.toggle_wheel())
 
-    def on_key_release(key):
-        try:
-            if key == keyboard.Key.shift_l or key == keyboard.Key.shift_r:
-                held_keys.discard('sneak')
-                client.send(Actions.sneak("stop"))
-                return
+            elif event.type == pygame.KEYUP:
+                key = event.key
 
-            if key == keyboard.Key.ctrl_l or key == keyboard.Key.ctrl_r:
-                held_keys.discard('sprint')
-                client.send(Actions.sprint("stop"))
-                return
+                if key in (pygame.K_LSHIFT, pygame.K_RSHIFT):
+                    if "sneak" in held_keys:
+                        held_keys.discard("sneak")
+                        send(Actions.sneak("stop"))
+                    continue
 
-            c = key.char if hasattr(key, 'char') and key.char else None
-            if c and c in key_map:
-                held_keys.discard(c)
-                _, direction = key_map[c]
-                client.send(Actions.move(direction, "stop"))
+                if key in (pygame.K_LCTRL, pygame.K_RCTRL):
+                    if "sprint" in held_keys:
+                        held_keys.discard("sprint")
+                        send(Actions.sprint("stop"))
+                    continue
 
-        except Exception as e:
-            log(f"Error: {e}")
+                if key in key_map:
+                    _, direction = key_map[key]
+                    if direction in held_keys:
+                        held_keys.discard(direction)
+                        send(Actions.move(direction, "stop"))
 
-    # --- Mouse ---
-    last_pos = [None, None]
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    send(Actions.attack())
+                elif event.button == 3:
+                    if "use_item" not in held_keys:
+                        held_keys.add("use_item")
+                        send(Actions.use_item("start"))
 
-    def on_mouse_move(x, y):
-        if not locked:
-            return
-        if last_pos[0] is None:
-            last_pos[0] = x
-            last_pos[1] = y
-            return
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 3:
+                    if "use_item" in held_keys:
+                        held_keys.discard("use_item")
+                        send(Actions.use_item("stop"))
 
-        dx = (x - last_pos[0]) * MOUSE_SENSITIVITY
-        dy = (y - last_pos[1]) * MOUSE_SENSITIVITY
-        last_pos[0] = x
-        last_pos[1] = y
+        # Mouse look
+        if mouse_grabbed:
+            dx, dy = pygame.mouse.get_rel()
+            if abs(dx) > 0 or abs(dy) > 0:
+                send(Actions.look(
+                    yaw=dx * MOUSE_SENSITIVITY,
+                    pitch=dy * MOUSE_SENSITIVITY,
+                    relative=True,
+                ))
 
-        if abs(dx) > 0.1 or abs(dy) > 0.1:
-            try:
-                client.send(Actions.look(yaw=dx, pitch=dy, relative=True))
-            except Exception:
-                pass
+        # -- Render HUD --
+        screen.fill((20, 20, 30))
 
-    def on_mouse_click(x, y, button, pressed):
-        try:
-            if button == mouse.Button.left:
-                if pressed:
-                    client.send(Actions.attack())
-            elif button == mouse.Button.right:
-                if pressed:
-                    client.send(Actions.use_item("start"))
-                else:
-                    client.send(Actions.use_item("stop"))
-        except Exception as e:
-            log(f"Error: {e}")
+        with state_lock:
+            ps = state_data.get("playerState", {})
+            hi = state_data.get("heldItem", {})
 
-    # Start listeners
-    kb_listener = keyboard.Listener(on_press=on_key_press, on_release=on_key_release)
-    ms_listener = mouse.Listener(on_move=on_mouse_move, on_click=on_mouse_click)
-    kb_listener.start()
-    ms_listener.start()
+        lines = [
+            f"MCCTP Remote Play",
+            f"",
+            f"Connection: {'OK' if connected else 'LOST'}",
+            f"Mouse Lock: {'ON  (F1 toggle, ESC release)' if mouse_grabbed else 'OFF (F1 toggle)'}",
+            f"",
+            f"HP:    {ps.get('health', '?')}",
+            f"Pos:   {ps.get('x', 0):.1f}, {ps.get('y', 0):.1f}, {ps.get('z', 0):.1f}",
+            f"Look:  yaw {ps.get('yaw', 0):.1f}  pitch {ps.get('pitch', 0):.1f}",
+            f"Held:  {hi.get('name', 'air')} ({hi.get('category', '')})",
+            f"",
+            f"WASD=Move  Space=Jump  Shift=Sneak  Ctrl=Sprint",
+            f"LClick=Attack  RClick=Use  1-9=Slot  Q=Drop",
+            f"E=Inventory  F=Swap  V=Wheel  ESC=Quit",
+        ]
 
-    try:
-        while running:
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        pass
+        y = 10
+        for i, line in enumerate(lines):
+            color = (100, 200, 255) if i == 0 else (200, 200, 200)
+            if not connected and i == 2:
+                color = (255, 80, 80)
+            surf = font.render(line, True, color)
+            screen.blit(surf, (12, y))
+            y += 20
 
-    log("\nDisconnecting...")
-    # Release all held keys
-    for c in list(held_keys):
-        if c in key_map:
-            _, direction = key_map[c]
-            client.send(Actions.move(direction, "stop"))
-        elif c == 'sneak':
-            client.send(Actions.sneak("stop"))
-        elif c == 'sprint':
-            client.send(Actions.sprint("stop"))
+        pygame.display.flip()
+        clock.tick(FPS)
 
-    kb_listener.stop()
-    ms_listener.stop()
+    # -- Cleanup --
+    release_all()
+    set_grab(False)
+    pygame.quit()
     client.disconnect()
-    print("\nBye!")
+    print("Bye!")
 
 
 if __name__ == "__main__":
