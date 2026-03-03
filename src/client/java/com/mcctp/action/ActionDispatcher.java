@@ -31,6 +31,8 @@ public class ActionDispatcher {
         handlers.put("hover_slot", new HoverSlotHandler());
         handlers.put("inventory_click", new InventoryClickHandler());
         handlers.put("send_chat", new SendChatHandler());
+        handlers.put("cursor", new CursorHandler());
+        handlers.put("click", new ClickHandler());
     }
 
     public void registerHandler(String action, ActionHandler handler) {

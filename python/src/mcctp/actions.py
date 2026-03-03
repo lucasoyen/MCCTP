@@ -14,6 +14,8 @@ CLOSE_SCREEN = "close_screen"
 TOGGLE_WHEEL = "toggle_wheel"
 INVENTORY_CLICK = "inventory_click"
 SEND_CHAT = "send_chat"
+CURSOR = "cursor"
+CLICK = "click"
 
 
 class Actions:
@@ -97,3 +99,13 @@ class Actions:
                      as a command (without opening the chat screen).
         """
         return {"action": SEND_CHAT, "params": {"message": message}}
+
+    @staticmethod
+    def cursor(x: float, y: float) -> dict:
+        """Move cursor to normalized screen position (0-1)."""
+        return {"action": CURSOR, "params": {"x": x, "y": y}}
+
+    @staticmethod
+    def click(button: str = "left") -> dict:
+        """Click at current cursor position. button: 'left' or 'right'."""
+        return {"action": CLICK, "params": {"button": button}}
